@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pomegranate Computer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      body {
+        background: linear-gradient(to bottom, #958b81, #b6aca7);
+        background-attachment: fixed;
+        color: #2a2524;
+        font-family: var(--sans);
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      body.x-hidecur, body.x-hidecur * { cursor: none !important; }
+      #x-stage { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; display: block; cursor: grab; touch-action: none; }
+      #x-stage.x-grabbing { cursor: grabbing; }
+      #x-stage, .x-poster { transition: opacity 0.8s ease; }
+      body:not(.x-live) #x-stage { opacity: 0; pointer-events: none; }
+      .x-poster {
+        position: fixed; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+        overflow: hidden; cursor: pointer; touch-action: manipulation;
+      }
+      body.x-live .x-poster { opacity: 0; pointer-events: none; }
+      .x-poster img {
+        height: 92vh; width: 100%; object-fit: contain; display: block;
+        animation: x-drift 20s ease-in-out infinite alternate; will-change: transform;
+      }
+      @keyframes x-drift {
+        from { transform: scale(1) translate(0, 0); }
+        to { transform: scale(1.03) translate(0.4%, -0.6%); }
+      }
+      @media (prefers-reduced-motion: reduce) { .x-poster img { animation: none; } }
+      .x-title { position: fixed; top: 28px; left: 32px; pointer-events: none; }
+      .x-title h1 { margin: 0; font: var(--type-title); font-weight: var(--weight-medium); color: #2a2524; }
+      .x-title p { margin: 4px 0 0; font: var(--type-label); letter-spacing: 0.04em; color: #2a2524; opacity: 0.8; }
+      .x-caption {
+        position: fixed; bottom: 52px; left: 0; right: 0; margin: 0; text-align: center;
+        font: var(--type-body); font-size: var(--size-heading, 20px); color: #2a2524;
+        pointer-events: none; transition: opacity var(--dur-quick, 0.2s) var(--ease-out, ease);
+        padding: 0 24px;
+      }
+      .x-legend {
+        position: fixed; bottom: 16px; left: 0; right: 0; margin: 0; text-align: center; padding: 0 24px; pointer-events: none;
+        font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; color: #2a2524; opacity: 0.85;
+      }
+      .x-label {
+        position: fixed; left: 0; top: 0; pointer-events: none; opacity: 0;
+        font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; color: #3a3534;
+        padding: 2px 6px; border-left: 1px solid #3a3534; white-space: nowrap;
+        transition: opacity 0.4s ease;
+      }
+      .x-label.is-on { opacity: 1; }
+      @media (max-width: 640px) {
+        .x-legend { bottom: 12px; }
+        .x-caption { bottom: 64px; font-size: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="x-stage" aria-label="A pomegranate computer you can open, explode and take apart"></canvas>
+    <figure class="x-poster" id="x-poster" role="button" tabindex="0" aria-label="Open the pomegranate computer">
+      <img src="pomegranate-motherboard.png" alt="A wet pomegranate whose left side has turned into a dense motherboard" />
+    </figure>
+    <div class="x-title">
+      <h1 dir="rtl" lang="fa">حسینه استقلال</h1>
+      <p>pomegranate computer</p>
+    </div>
+    <p class="x-caption" id="x-caption">open me like fruit.</p>
+    <p class="x-legend">space open · drag parts · E explode · R reassemble · F fullscreen</p>
+    <div class="x-label" id="lab-rind">rind / case</div>
+    <div class="x-label" id="lab-seed">seed / key</div>
+    <div class="x-label" id="lab-pith">pith / bus</div>
+    <div class="x-label" id="lab-core">core / cpu</div>
+    <div class="x-label" id="lab-crown">crown / power</div>
+
+    <script>
+      (function () {
+        var p = document.getElementById("x-poster");
+        function wake() {
+          if (window.xGoLive) window.xGoLive();
+          else document.body.classList.add("x-live");
+          p.setAttribute("aria-hidden", "true");
+        }
+        p.addEventListener("click", wake);
+        p.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); wake(); } });
+        window.xPosterShown = function () { p.removeAttribute("aria-hidden"); };
+      })();
+    </script>
+    <script src="three.min.js"></script>
+    <script>
+      (function () {
+        const canvas = document.getElementById("x-stage");
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        renderer.setClearColor(0x000000, 0);
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+
+        // Lights
+        scene.add(new THREE.HemisphereLight(0xfff4ea, 0x5a5048, 1.1));
+        const key = new THREE.DirectionalLight(0xfff1e0, 3.38);
+        key.position.set(-4, 5, 3);
+        scene.add(key);
+        const rim = new THREE.DirectionalLight(0xffd6d6, 1.2);
+        rim.position.set(3, 2, -4);
+        scene.add(rim);
+
+        // Soft shadow disc
+        const sc = document.createElement("canvas");
+        sc.width = sc.height = 128;
+        const g = sc.getContext("2d");
+        const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grd.addColorStop(0, "rgba(40,30,28,0.55)");
+        grd.addColorStop(0.5, "rgba(40,30,28,0.25)");
+        grd.addColorStop(1, "rgba(40,30,28,0)");
+        g.fillStyle = grd;
+        g.fillRect(0, 0, 128, 128);
+        const shadow = new THREE.Mesh(
+          new THREE.PlaneGeometry(3, 3),
+          new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false })
+        );
+        shadow.rotation.x = -Math.PI / 2;
+        shadow.position.y = -1.12;
+        scene.add(shadow);
+
+        // Fruit root
+        const fruit = new THREE.Group();
+        fruit.scale.set(1, 1.1, 1);
+        const START_ROT = 0.42; // circuit wedges on the left, facing camera
+        fruit.rotation.y = START_ROT;
+        // Root sits at the world origin; any centering offset lives inside it
+        const root = new THREE.Group();
+        root.position.set(0, 0, 0);
+        root.add(fruit);
+        scene.add(root);
+        const OPEN_ANGLE = 0.55, EXPLODE = 0.45;
+
+        const Y = new THREE.Vector3(0, 1, 0);
+        const parts = [];
+        const pickables = [];
+        const rand = (a, b) => a + Math.random() * (b - a);
+        // Pear-ish taper: narrower toward the top
+        const taper = (y) => (y > 0 ? 1 - 0.25 * y * y : 1 + 0.03 * y * y);
+        const onSphere = (phi, th, r) => {
+          const f = taper(Math.cos(th));
+          return new THREE.Vector3(-Math.cos(phi) * Math.sin(th) * f, Math.cos(th), Math.sin(phi) * Math.sin(th) * f).multiplyScalar(r);
+        };
+        function taperGeo(geo) {
+          const p = geo.attributes.position;
+          for (let i = 0; i < p.count; i++) {
+            const f = taper(p.getY(i));
+            p.setX(i, p.getX(i) * f);
+            p.setZ(i, p.getZ(i) * f);
+          }
+          geo.computeVertexNormals();
+          return geo;
+        }
+
+        function registerPart(obj, ex, extra) {
+          obj.userData.part = true;
+          obj.userData.homePos = obj.position.clone();
+          obj.userData.homeQuat = obj.quaternion.clone();
+          obj.userData.ex = ex || new THREE.Vector3();
+          obj.userData.free = false;
+          Object.assign(obj.userData, extra || {});
+          obj.traverse((m) => {
+            if (m.isMesh && !m.userData.noPick && !m.userData.owner) {
+              m.userData.owner = obj;
+              pickables.push(m);
+            }
+          });
+          parts.push(obj);
+          return obj;
+        }
+
+        // Materials
+        const M = {
+          rind: new THREE.MeshPhysicalMaterial({ color: 0x4a0d1a, clearcoat: 1, clearcoatRoughness: 0.05, roughness: 0.3, side: THREE.DoubleSide }),
+          crown: new THREE.MeshPhysicalMaterial({ color: 0x4a0c17, clearcoat: 0.6, roughness: 0.5, side: THREE.DoubleSide }),
+          board: new THREE.MeshStandardMaterial({ color: 0x141a16, roughness: 0.6, side: THREE.DoubleSide }),
+          drop: new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0, clearcoat: 1, transparent: true, opacity: 0.35 }),
+          chip: new THREE.MeshStandardMaterial({ color: 0x121212, roughness: 0.45 }),
+          cpu: new THREE.MeshStandardMaterial({ color: 0xc9c6c0, roughness: 0.3, metalness: 0.5 }),
+          res: new THREE.MeshStandardMaterial({ color: 0xb8322a, roughness: 0.5 }),
+          capB: new THREE.MeshStandardMaterial({ color: 0x2a4fa0, roughness: 0.35 }),
+          capT: new THREE.MeshStandardMaterial({ color: 0x1f8a86, roughness: 0.35 }),
+          conn: new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.5 }),
+          wire: new THREE.MeshStandardMaterial({ color: 0xe07a1f, roughness: 0.4 }),
+          key: new THREE.MeshPhysicalMaterial({ color: 0xb0102a, roughness: 0.15, clearcoat: 1, transparent: true, opacity: 0.82 }),
+          core: new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.4 }),
+          gold: new THREE.MeshStandardMaterial({ color: 0xd4a640, metalness: 1, roughness: 0.3 }),
+          cream: new THREE.MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.7, side: THREE.DoubleSide }),
+          grey: new THREE.MeshStandardMaterial({ color: 0x9a9792, roughness: 0.7, side: THREE.DoubleSide }),
+        };
+
+        // Environment for metal reflections: gradient room with a soft light panel
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envScene = new THREE.Scene();
+        const envGeo = new THREE.SphereGeometry(10, 32, 16);
+        const ep = envGeo.attributes.position, ec = [];
+        const envLo = new THREE.Color(0x1a1714), envHi = new THREE.Color(0xc4bab0);
+        for (let i = 0; i < ep.count; i++) {
+          const c = envLo.clone().lerp(envHi, ep.getY(i) / 20 + 0.5);
+          ec.push(c.r, c.g, c.b);
+        }
+        envGeo.setAttribute("color", new THREE.Float32BufferAttribute(ec, 3));
+        envScene.add(new THREE.Mesh(envGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(8, 3), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        panel.position.set(-3, 6, 3);
+        panel.lookAt(0, 0, 0);
+        envScene.add(panel);
+        scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+
+        // Canvas textures
+        function canvasTex(w, h, draw) {
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          draw(c.getContext("2d"), w, h);
+          const t = new THREE.CanvasTexture(c);
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          return t;
+        }
+        const lidTex = canvasTex(512, 512, (x, w, h) => {
+          x.fillStyle = "#c9c8c4";
+          x.fillRect(0, 0, w, h);
+          for (let i = 0; i < 1600; i++) {
+            const y = Math.random() * h, x0 = Math.random() * w;
+            x.strokeStyle = Math.random() < 0.5 ? `rgba(255,255,255,${rand(0.05, 0.18)})` : `rgba(60,60,60,${rand(0.04, 0.12)})`;
+            x.lineWidth = rand(0.5, 1.5);
+            x.beginPath(); x.moveTo(x0, y); x.lineTo(x0 + rand(40, 300), y); x.stroke();
+          }
+          x.fillStyle = "rgba(58,58,58,0.85)";
+          x.font = "600 34px monospace";
+          x.fillText("ANAR CORE i7-1007", 64, 190);
+          x.fillText("SR10V 3.20GHZ", 64, 240);
+          x.fillText("L610A274", 64, 290);
+          const cs = 8, ox = 360, oy = 330;
+          for (let r = 0; r < 10; r++) for (let q = 0; q < 10; q++) {
+            const edge = r === 0 || q === 0 || r === 9 || q === 9;
+            if (edge ? (r === 0 || q === 0 || (r + q) % 2 === 0) : Math.random() < 0.5) x.fillRect(ox + q * cs, oy + r * cs, cs, cs);
+          }
+          x.beginPath(); x.moveTo(36, 476); x.lineTo(84, 476); x.lineTo(36, 428); x.closePath(); x.fill();
+        });
+        M.lid = new THREE.MeshStandardMaterial({ map: lidTex, metalness: 0.9, roughness: 0.35 });
+        M.substrate = new THREE.MeshStandardMaterial({ color: 0x1f5c30, roughness: 0.55 });
+
+        const boardTex = canvasTex(512, 512, (x, w, h) => {
+          x.fillStyle = "#0c1a11";
+          x.fillRect(0, 0, w, h);
+          const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+          const via = (vx, vy) => {
+            x.strokeStyle = "rgba(196,128,62,0.9)"; x.lineWidth = 2.2;
+            x.beginPath(); x.arc(vx, vy, 4.5, 0, Math.PI * 2); x.stroke();
+            x.fillStyle = "#050a07"; x.beginPath(); x.arc(vx, vy, 2, 0, Math.PI * 2); x.fill();
+          };
+          for (let t = 0; t < 70; t++) {
+            let px = Math.round(Math.random() * 32) * 16, py = Math.round(Math.random() * 32) * 16;
+            const sx = px, sy = py;
+            x.strokeStyle = "rgba(184,115,51,0.6)"; x.lineWidth = rand(1.2, 2.4); x.lineJoin = "round";
+            x.beginPath(); x.moveTo(px, py);
+            let d = dirs[Math.floor(Math.random() * 4)];
+            for (let s = 0; s < 3 + Math.floor(Math.random() * 3); s++) {
+              const len = 16 * (1 + Math.floor(Math.random() * 6));
+              px += d[0] * len; py += d[1] * len; x.lineTo(px, py);
+              d = dirs[Math.floor(Math.random() * 8)];
+            }
+            x.stroke();
+            via(sx, sy); via(px, py);
+          }
+          for (let v = 0; v < 40; v++) via(Math.random() * w, Math.random() * h);
+          x.font = "bold 16px monospace";
+          ["R12", "C7", "U3", "J1", "Q4", "R12", "C7", "U3", "J1", "Q4"].forEach((lab) => {
+            const lx = rand(10, w - 70), ly = rand(24, h - 10);
+            x.fillStyle = "rgba(236,236,226,0.85)";
+            x.fillText(lab, lx, ly);
+            x.strokeStyle = "rgba(236,236,226,0.6)"; x.lineWidth = 1.2;
+            x.strokeRect(lx + 38, ly - 16, 22, 14);
+          });
+        });
+        boardTex.wrapS = boardTex.wrapT = THREE.RepeatWrapping;
+        boardTex.repeat.set(1, 3);
+        M.board.map = boardTex;
+        M.board.color.set(0xffffff);
+
+        const chipTops = ["74HC595", "ATMEGA328", "W25Q128"].map((label) =>
+          new THREE.MeshStandardMaterial({
+            roughness: 0.45,
+            map: canvasTex(256, 256, (x, w, h) => {
+              x.fillStyle = "#141414";
+              x.fillRect(0, 0, w, h);
+              x.fillStyle = "rgba(240,240,236,0.9)";
+              x.font = "bold 40px sans-serif";
+              x.textAlign = "center";
+              const sc = Math.min(1, (w - 30) / x.measureText(label).width);
+              x.save(); x.translate(w / 2, h / 2 + 8); x.scale(sc, 1); x.fillText(label, 0, 0); x.restore();
+              x.font = "22px monospace";
+              x.fillStyle = "rgba(240,240,236,0.6)";
+              x.fillText("2231 PH", w / 2, h / 2 + 44);
+              x.fillStyle = "#3c3c3c";
+              x.beginPath(); x.arc(34, 34, 11, 0, Math.PI * 2); x.fill();
+            }),
+          })
+        );
+        const chipMat = () => {
+          const top = chipTops[Math.floor(Math.random() * chipTops.length)];
+          return [M.chip, M.chip, top, M.chip, M.chip, M.chip];
+        };
+
+        // Wedges: pivot at the bottom, hinge tilts top outward
+        const W = 6, SEG = Math.PI / 3;
+        const wedges = [];
+        for (let i = 0; i < W; i++) {
+          const mid = i * SEG + SEG / 2;
+          const radial = new THREE.Vector3(-Math.cos(mid), 0, Math.sin(mid));
+          const axis = new THREE.Vector3().crossVectors(Y, radial).normalize();
+          const pivot = new THREE.Group();
+          pivot.position.set(0, -1, 0);
+          const inner = new THREE.Group();
+          inner.position.set(0, 1, 0);
+          pivot.add(inner);
+          const circuit = i < 2;
+          const shell = new THREE.Mesh(
+            taperGeo(new THREE.SphereGeometry(circuit ? 0.99 : 1, 14, 24, i * SEG, SEG)),
+            circuit ? M.board : M.rind
+          );
+          inner.add(shell);
+          fruit.add(pivot);
+          pivot.userData.inner = inner;
+          pivot.userData.openQuat = new THREE.Quaternion().setFromAxisAngle(axis, OPEN_ANGLE);
+          pivot.userData.wedge = true;
+          pivot.userData.shell = shell;
+          pivot.userData.radial = radial;
+          wedges.push(pivot);
+        }
+
+        // Droplets on rind wedges
+        const dropGeo = new THREE.SphereGeometry(1, 10, 8);
+        for (let d = 0; d < 150; d++) {
+          const wi = 2 + Math.floor(Math.random() * 4);
+          const phi = rand(wi * SEG + 0.05, (wi + 1) * SEG - 0.05);
+          const th = rand(0.4, 2.6);
+          const n = onSphere(phi, th, 1);
+          const s = rand(0.008, 0.035);
+          const m = new THREE.Mesh(dropGeo, M.drop);
+          m.position.copy(n).multiplyScalar(1 + s * 0.3);
+          m.quaternion.setFromUnitVectors(Y, n.clone().normalize());
+          m.scale.set(s, s * 0.55, s);
+          m.userData.noPick = true;
+          wedges[wi].userData.inner.add(m);
+        }
+
+        // Circuit side
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 12);
+        const cpuPhi = SEG / 2, cpuTh = Math.PI / 2;
+        const cpuN = onSphere(cpuPhi, cpuTh, 1);
+        function placeOnSurface(mesh, phi, th, h, ex) {
+          const n = onSphere(phi, th, 1);
+          mesh.position.copy(n).multiplyScalar(1 + h / 2);
+          mesh.quaternion.setFromUnitVectors(Y, n.clone().normalize()).multiply(new THREE.Quaternion().setFromAxisAngle(Y, ex === false ? 0 : rand(0, Math.PI)));
+          const wi = Math.min(1, Math.floor(phi / SEG));
+          wedges[wi].userData.inner.add(mesh);
+          registerPart(mesh, n.clone().multiplyScalar(0.8));
+          return mesh;
+        }
+        // CPU: green substrate, chamfered silver lid, gold edge pads (origin at the base)
+        const padGeo = new THREE.BoxGeometry(1, 1, 1);
+        function makeCPU(s, subH, lidH) {
+          const g = new THREE.Group();
+          const sub = new THREE.Mesh(boxGeo, M.substrate);
+          sub.scale.set(s, subH, s);
+          sub.position.y = subH / 2;
+          g.add(sub);
+          const L = s * 0.8, hL = L / 2, c = L * 0.08;
+          const shp = new THREE.Shape();
+          shp.moveTo(-hL + c, -hL); shp.lineTo(hL - c, -hL); shp.lineTo(hL, -hL + c); shp.lineTo(hL, hL - c);
+          shp.lineTo(hL - c, hL); shp.lineTo(-hL + c, hL); shp.lineTo(-hL, hL - c); shp.lineTo(-hL, -hL + c); shp.closePath();
+          const lg = new THREE.ExtrudeGeometry(shp, { depth: lidH, bevelEnabled: false });
+          const lp = lg.attributes.position, lu = lg.attributes.uv;
+          for (let i = 0; i < lp.count; i++) lu.setXY(i, lp.getX(i) / L + 0.5, lp.getY(i) / L + 0.5);
+          lg.rotateX(-Math.PI / 2);
+          const lid = new THREE.Mesh(lg, M.lid);
+          lid.position.y = subH;
+          g.add(lid);
+          const n = 12, pw = s * 0.026, pl = s * 0.045, off = s / 2 - s * 0.035;
+          for (let e = 0; e < 4; e++) for (let p = 0; p < n; p++) {
+            const t = (-0.5 + (p + 0.5) / n) * s * 0.82;
+            const pad = new THREE.Mesh(padGeo, M.gold);
+            pad.userData.noPick = true;
+            const alongX = e < 2;
+            pad.scale.set(alongX ? pw : pl, 0.002, alongX ? pl : pw);
+            pad.position.set(alongX ? t : (e === 2 ? off : -off), subH + 0.0008, alongX ? (e === 0 ? off : -off) : t);
+            g.add(pad);
+          }
+          return g;
+        }
+        const cpuChip = makeCPU(0.3, 0.012, 0.018);
+        placeOnSurface(cpuChip, cpuPhi, cpuTh, 0, false);
+
+        const kinds = [
+          { n: 50, mat: chipMat, geo: boxGeo, size: () => [rand(0.05, 0.16), 0.02, rand(0.05, 0.12)] },
+          { n: 30, mat: M.res, geo: boxGeo, size: () => [0.055, 0.016, 0.02] },
+          { n: 13, mat: M.capB, geo: cylGeo, size: () => { const r = rand(0.015, 0.03); return [r, rand(0.04, 0.08), r]; } },
+          { n: 12, mat: M.capT, geo: cylGeo, size: () => { const r = rand(0.015, 0.03); return [r, rand(0.04, 0.08), r]; } },
+          { n: 8, mat: M.conn, geo: boxGeo, size: () => [0.12, 0.03, 0.04] },
+        ];
+        kinds.forEach((k) => {
+          let placed = 0, tries = 0;
+          while (placed < k.n && tries++ < 500) {
+            const phi = rand(0.06, 2 * SEG - 0.06), th = rand(0.4, 2.7);
+            if (onSphere(phi, th, 1).angleTo(cpuN) < 0.24) continue;
+            const s = k.size();
+            const m = new THREE.Mesh(k.geo, typeof k.mat === "function" ? k.mat() : k.mat);
+            m.scale.set(s[0], s[1], s[2]);
+            placeOnSurface(m, phi, th, s[1]);
+            placed++;
+          }
+        });
+
+        // Wires
+        const wires = [];
+        for (let w = 0; w < 8; w++) {
+          const p0 = rand(0.1, 2 * SEG - 0.1), p1 = rand(0.1, 2 * SEG - 0.1);
+          const t0 = rand(0.6, 2.5), t1 = rand(0.6, 2.5);
+          const pts = [];
+          for (let s = 0; s <= 8; s++) {
+            const t = s / 8;
+            pts.push(onSphere(p0 + (p1 - p0) * t, t0 + (t1 - t0) * t, 1.03 + Math.sin(t * Math.PI) * 0.09));
+          }
+          const curve = new THREE.CatmullRomCurve3(pts);
+          const m = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.008, 6), M.wire);
+          const midN = curve.getPoint(0.5).normalize();
+          wedges[Math.min(1, Math.floor(p0 / SEG))].userData.inner.add(m);
+          registerPart(m, midN.clone().multiplyScalar(0.8), { anchor: curve.getPoint(0.5) });
+          wires.push(m);
+        }
+
+        // Dense filler parts: 3 instanced kinds per circuit wedge (wedges hinge apart)
+        const fillKinds = [
+          { n: 50, mat: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.45 }), size: () => [rand(0.015, 0.06), rand(0.008, 0.02), rand(0.015, 0.06)] },
+          { n: 30, mat: new THREE.MeshStandardMaterial({ color: 0x1f7f8f, roughness: 0.35 }), size: () => [rand(0.012, 0.025), rand(0.008, 0.015), rand(0.01, 0.02)] },
+          { n: 20, mat: new THREE.MeshStandardMaterial({ color: 0xb01c22, roughness: 0.4 }), size: () => [rand(0.006, 0.012), 0.006, rand(0.006, 0.01)] },
+        ];
+        const fm = new THREE.Matrix4(), fq = new THREE.Quaternion(), fs = new THREE.Vector3(), fp = new THREE.Vector3();
+        for (let wi = 0; wi < 2; wi++) {
+          fillKinds.forEach((k) => {
+            const im = new THREE.InstancedMesh(boxGeo, k.mat, k.n);
+            im.userData.noPick = true;
+            for (let i = 0; i < k.n; i++) {
+              let phi, th, n;
+              do {
+                phi = rand(wi * SEG + 0.03, (wi + 1) * SEG - 0.03); th = rand(0.3, 2.84);
+                n = onSphere(phi, th, 1);
+              } while (n.angleTo(cpuN) < 0.2);
+              const s = k.size(), lift = rand(0.003, 0.02);
+              fp.copy(n).multiplyScalar(1 + lift + s[1] / 2);
+              fq.setFromUnitVectors(Y, n.clone().normalize()).multiply(new THREE.Quaternion().setFromAxisAngle(Y, rand(0, Math.PI)));
+              fs.set(s[0], s[1], s[2]);
+              im.setMatrixAt(i, fm.compose(fp, fq, fs));
+            }
+            im.instanceMatrix.needsUpdate = true;
+            wedges[wi].userData.inner.add(im);
+          });
+        }
+
+        // Extra thin glossy wires: 5 orange, 3 black
+        const glossOrange = new THREE.MeshPhysicalMaterial({ color: 0xe07a1f, roughness: 0.15, clearcoat: 1 });
+        const glossBlack = new THREE.MeshPhysicalMaterial({ color: 0x0c0c0c, roughness: 0.15, clearcoat: 1 });
+        for (let w = 0; w < 8; w++) {
+          const wi = w % 2;
+          const p0 = rand(wi * SEG + 0.08, (wi + 1) * SEG - 0.08), p1 = rand(wi * SEG + 0.08, (wi + 1) * SEG - 0.08);
+          const t0 = rand(0.5, 2.6), t1 = rand(0.5, 2.6);
+          const pts = [];
+          for (let s = 0; s <= 8; s++) {
+            const t = s / 8;
+            pts.push(onSphere(p0 + (p1 - p0) * t, t0 + (t1 - t0) * t, 1.025 + Math.sin(t * Math.PI) * 0.06));
+          }
+          const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.004, 6), w < 5 ? glossOrange : glossBlack);
+          m.userData.noPick = true;
+          wedges[wi].userData.inner.add(m);
+        }
+
+        // Detail parts: a free spot within the circuit wedges, clear of the CPU
+        function freeSpot(margin, thLo, thHi) {
+          let phi, th;
+          do {
+            phi = rand(margin, 2 * SEG - margin); th = rand(thLo, thHi);
+            const local = phi % SEG;
+            if (local < margin || local > SEG - margin) continue;
+            if (onSphere(phi, th, 1).angleTo(cpuN) < 0.26) continue;
+            return [phi, th];
+          } while (true);
+        }
+
+        // Electrolytic capacitors: navy sleeve with a stripe, silver top with a K vent
+        const sleeveTex = canvasTex(256, 64, (x, w, h) => {
+          x.fillStyle = "#14204a"; x.fillRect(0, 0, w, h);
+          x.fillStyle = "#6f86c4"; x.fillRect(w * 0.12, 0, w * 0.12, h);
+          x.fillStyle = "rgba(20,32,74,0.9)";
+          for (let i = 0; i < 4; i++) x.fillRect(w * 0.16, h * (0.15 + i * 0.2), w * 0.04, h * 0.06);
+          x.fillStyle = "#c6ccd8"; x.fillRect(0, 0, w, h * 0.05);
+        });
+        const ventDraw = (dark) => (x, w, h) => {
+          x.fillStyle = dark ? "#ffffff" : "#d4d6da"; x.fillRect(0, 0, w, h);
+          x.strokeStyle = dark ? "#000000" : "#7b7f86"; x.lineWidth = w * 0.045; x.lineCap = "round";
+          const c = w / 2, r = w * 0.34;
+          x.beginPath();
+          x.moveTo(c - r * 0.35, c - r); x.lineTo(c - r * 0.35, c + r);
+          x.moveTo(c - r * 0.35, c); x.lineTo(c + r * 0.6, c - r * 0.85);
+          x.moveTo(c - r * 0.35, c); x.lineTo(c + r * 0.6, c + r * 0.85);
+          x.stroke();
+          x.lineWidth = w * 0.02; x.strokeStyle = dark ? "#808080" : "#9a9ea6";
+          x.beginPath(); x.arc(c, c, w * 0.46, 0, Math.PI * 2); x.stroke();
+        };
+        const ventTex = canvasTex(256, 256, ventDraw(false));
+        const ventBump = canvasTex(256, 256, ventDraw(true));
+        ventBump.colorSpace = THREE.NoColorSpace;
+        const capSleeve = new THREE.MeshStandardMaterial({ map: sleeveTex, roughness: 0.4 });
+        const capTop = new THREE.MeshStandardMaterial({ map: ventTex, bumpMap: ventBump, bumpScale: 2, metalness: 1, roughness: 0.3 });
+        const capGeo = new THREE.CylinderGeometry(1, 1, 1, 28).translate(0, 0.5, 0);
+        for (let i = 0; i < 10; i++) {
+          const [phi, th] = freeSpot(0.08, 0.5, 2.6);
+          const r = rand(0.025, 0.04);
+          const cap = new THREE.Mesh(capGeo, [capSleeve, capTop, capSleeve]);
+          cap.scale.set(r, r * rand(1.8, 2.6), r);
+          placeOnSurface(cap, phi, th, 0);
+        }
+
+        // Pin headers: gold square pins on black plastic bases
+        const pinMat = new THREE.MeshStandardMaterial({ color: 0xd4a640, metalness: 1, roughness: 0.25 });
+        const headerBase = new THREE.MeshStandardMaterial({ color: 0x0e0e0e, roughness: 0.6 });
+        const pitch = 0.012;
+        for (let i = 0; i < 4; i++) {
+          const [phi, th] = freeSpot(0.2, 0.8, 2.3);
+          const n = 8 + Math.floor(Math.random() * 13);
+          const g = new THREE.Group();
+          const base = new THREE.Mesh(boxGeo, headerBase);
+          base.scale.set(n * pitch, 0.01, pitch);
+          base.position.y = 0.005;
+          g.add(base);
+          const pins = new THREE.InstancedMesh(boxGeo, pinMat, n);
+          for (let p = 0; p < n; p++) {
+            fp.set((p - (n - 1) / 2) * pitch, 0.016, 0);
+            fq.identity(); fs.set(0.0032, 0.032, 0.0032);
+            pins.setMatrixAt(p, fm.compose(fp, fq, fs));
+          }
+          pins.instanceMatrix.needsUpdate = true;
+          g.add(pins);
+          placeOnSurface(g, phi, th, 0);
+        }
+
+        // Resistors: beige capsules with brown, black, orange, gold bands and silver legs
+        const resTex = canvasTex(64, 256, (x, w, h) => {
+          x.fillStyle = "#d9c49a"; x.fillRect(0, 0, w, h);
+          [["#6b3a1e", 0.3], ["#111111", 0.4], ["#e0731c", 0.5], ["#c9a23a", 0.68]].forEach(([c, v]) => {
+            x.fillStyle = c; x.fillRect(0, h * v, w, h * 0.06);
+          });
+        });
+        const resBody = new THREE.MeshStandardMaterial({ map: resTex, roughness: 0.55 });
+        const legMat = new THREE.MeshStandardMaterial({ color: 0xcfd2d6, metalness: 1, roughness: 0.3 });
+        const resGeo = new THREE.CapsuleGeometry(0.011, 0.04, 6, 16).rotateZ(Math.PI / 2);
+        const legGeo = new THREE.CylinderGeometry(0.0018, 0.0018, 1, 6);
+        const ry = 0.015;
+        for (let i = 0; i < 12; i++) {
+          const [phi, th] = freeSpot(0.1, 0.5, 2.6);
+          const g = new THREE.Group();
+          const body = new THREE.Mesh(resGeo, resBody);
+          body.position.y = ry;
+          g.add(body);
+          const run = new THREE.Mesh(legGeo, legMat);
+          run.rotation.z = Math.PI / 2; run.scale.y = 0.11; run.position.y = ry;
+          run.userData.noPick = true;
+          g.add(run);
+          [-0.055, 0.055].forEach((lx) => {
+            const leg = new THREE.Mesh(legGeo, legMat);
+            leg.scale.y = ry; leg.position.set(lx, ry / 2, 0);
+            leg.userData.noPick = true;
+            g.add(leg);
+          });
+          placeOnSurface(g, phi, th, 0);
+        }
+
+        // Clear resin beads along the board/rind seams
+        const resinMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, roughness: 0, clearcoat: 1 });
+        const resinGeo = new THREE.SphereGeometry(1, 16, 12);
+        for (let r = 0; r < 40; r++) {
+          const edge = r % 2, wi = edge;
+          const phi = edge ? 2 * SEG - rand(0, 0.03) : rand(0, 0.03);
+          const th = 0.25 + (Math.floor(r / 2) / 19) * 2.65 + rand(-0.04, 0.04);
+          const n = onSphere(phi, th, 1);
+          const rad = rand(0.03, 0.07);
+          const m = new THREE.Mesh(resinGeo, resinMat);
+          m.position.copy(n).multiplyScalar(1 + rad * 0.15);
+          m.quaternion.setFromUnitVectors(Y, n.clone().normalize());
+          m.scale.set(rad, rad * 0.5, rad);
+          m.userData.noPick = true;
+          wedges[wi].userData.inner.add(m);
+        }
+
+        // Crown
+        const crown = new THREE.Group();
+        crown.position.set(0, 0.95, 0);
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.17, 0.2, 20, 1, true), M.crown);
+        neck.position.y = 0.1;
+        crown.add(neck);
+        const sepalGeo = new THREE.ConeGeometry(0.05, 0.34, 6);
+        sepalGeo.translate(0, 0.17, 0);
+        sepalGeo.scale(1, 1, 0.55);
+        for (let c = 0; c < 6; c++) {
+          const a = (c / 6) * Math.PI * 2 + 0.3;
+          const sepal = new THREE.Mesh(sepalGeo, M.crown);
+          sepal.position.set(Math.cos(a) * 0.085, 0.18, Math.sin(a) * 0.085);
+          sepal.rotation.y = -a + Math.PI / 2;
+          sepal.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.sin(a), 0, -Math.cos(a)), 0.42));
+          crown.add(sepal);
+        }
+        fruit.add(crown);
+        registerPart(crown, new THREE.Vector3(0, 0.8, 0));
+
+        // Inside: CPU block with gold pins
+        const core = new THREE.Group();
+        const block = makeCPU(0.34, 0.06, 0.04);
+        block.position.y = -0.05;
+        core.add(block);
+        for (let e = 0; e < 4; e++) {
+          for (let p = 0; p < 10; p++) {
+            const pin = new THREE.Mesh(boxGeo, M.gold);
+            const t = -0.15 + (p / 9) * 0.3;
+            const side = e < 2 ? (e === 0 ? 0.18 : -0.18) : 0;
+            const side2 = e >= 2 ? (e === 2 ? 0.18 : -0.18) : 0;
+            pin.position.set(e < 2 ? side : t, -0.03, e < 2 ? t : side2);
+            pin.scale.set(e < 2 ? 0.03 : 0.012, 0.02, e < 2 ? 0.012 : 0.03);
+            core.add(pin);
+          }
+        }
+        fruit.add(core);
+        registerPart(core, new THREE.Vector3(0, 0, 0));
+
+        // Keycaps in clusters
+        // Keycap: rounded box, tapered (top 75% of base), slightly concave top; top faces +Z
+        const keyGeo = (() => {
+          const g = new THREE.BoxGeometry(1, 1, 1, 8, 4, 8), p = g.attributes.position, r = 0.14, v = new THREE.Vector3(), inn = new THREE.Vector3();
+          for (let i = 0; i < p.count; i++) {
+            v.fromBufferAttribute(p, i);
+            inn.set(THREE.MathUtils.clamp(v.x, -0.5 + r, 0.5 - r), THREE.MathUtils.clamp(v.y, -0.5 + r, 0.5 - r), THREE.MathUtils.clamp(v.z, -0.5 + r, 0.5 - r));
+            const off = v.clone().sub(inn);
+            if (off.lengthSq() > 0) v.copy(inn).add(off.setLength(r));
+            const t = v.y + 0.5, s = 1 - 0.25 * t;
+            const k = THREE.MathUtils.clamp((v.y - 0.3) / 0.2, 0, 1);
+            const dip = 0.05 * k * Math.max(0, 1 - (v.x / 0.5) ** 2);
+            p.setXYZ(i, v.x * s, v.y - dip, v.z * s);
+          }
+          g.scale(0.09, 0.055, 0.09);
+          g.rotateX(Math.PI / 2);
+          g.computeVertexNormals();
+          return g;
+        })();
+        M.key = new THREE.MeshPhysicalMaterial({ color: 0xa0122a, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.85 });
+        const legendGeo = new THREE.PlaneGeometry(0.036, 0.036);
+        const legendMats = ["A", "S", "D", "F", "J", "K", "L", "ESC", "TAB", "⏎", "⌘", "0", "1"].map((s) =>
+          new THREE.MeshBasicMaterial({
+            map: canvasTex(64, 64, (x, w, h) => {
+              x.fillStyle = "#fff";
+              x.font = `500 ${s.length > 1 ? 18 : 30}px Geist, system-ui, sans-serif`;
+              x.textAlign = "center"; x.textBaseline = "middle";
+              x.fillText(s, w / 2, h / 2 + 1);
+            }),
+            transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4,
+          })
+        );
+        const keys = [];
+        const centers = [];
+        for (let c = 0; c < 6; c++) {
+          const a = c * SEG + SEG / 2;
+          centers.push(new THREE.Vector3(-Math.cos(a) * 0.52, rand(-0.25, 0.25), Math.sin(a) * 0.52));
+        }
+        centers.forEach((ctr) => {
+          for (let k = 0; k < 10; k++) {
+            const m = new THREE.Group();
+            m.add(new THREE.Mesh(keyGeo, M.key));
+            const leg = new THREE.Mesh(legendGeo, legendMats[Math.floor(Math.random() * legendMats.length)]);
+            leg.position.z = 0.026;
+            leg.renderOrder = 2;
+            leg.userData.noPick = true;
+            m.add(leg);
+            m.position.copy(ctr).add(new THREE.Vector3(rand(-0.15, 0.15), rand(-0.17, 0.17), rand(-0.15, 0.15)));
+            if (m.position.length() > 0.8) m.position.setLength(0.8);
+            m.lookAt(m.position.clone().multiplyScalar(2));
+            m.rotateZ(rand(-0.4, 0.4));
+            fruit.add(m);
+            registerPart(m, m.position.clone().multiplyScalar(0.8));
+            keys.push(m);
+          }
+        });
+
+        // Ribbon cables between clusters
+        const RL = 0.36, RW = 0.07;
+        const ribGeo = new THREE.PlaneGeometry(RL, RW, 32, 1);
+        { const p = ribGeo.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, 0.018 * Math.sin((p.getX(i) / RL) * Math.PI * 2)); ribGeo.computeVertexNormals(); }
+        const ribMat = new THREE.MeshPhysicalMaterial({
+          map: canvasTex(8, 128, (x, w, h) => {
+            for (let i = 0; i < 32; i++) { x.fillStyle = i % 2 ? "#c9c9c5" : "#e4e4e0"; x.fillRect(0, i * 4, w, 4); }
+            x.fillStyle = "#b3122a"; x.fillRect(0, 0, w, 4);
+            x.fillStyle = "rgba(0,0,0,0.12)"; for (let i = 1; i < 32; i++) x.fillRect(0, i * 4, w, 1);
+          }),
+          roughness: 0.35, clearcoat: 0.5, clearcoatRoughness: 0.3, side: THREE.DoubleSide,
+        });
+        const idcGeo = new THREE.BoxGeometry(0.028, RW + 0.016, 0.026);
+        const idcMat = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 0.5 });
+        const dotGeo = new THREE.BoxGeometry(0.0045, 0.0045, 0.002);
+        for (let c = 0; c < 6; c++) {
+          const a = centers[c], b = centers[(c + 1) % 6];
+          const m = new THREE.Group();
+          m.add(new THREE.Mesh(ribGeo, ribMat));
+          const idc = new THREE.Mesh(idcGeo, idcMat);
+          idc.position.set(RL / 2 + 0.012, 0, 0);
+          m.add(idc);
+          for (let d = 0; d < 10; d++) {
+            const dot = new THREE.Mesh(dotGeo, M.gold);
+            dot.position.set(RL / 2 + 0.012, -0.034 + (d / 9) * 0.068, 0.0135);
+            dot.userData.noPick = true;
+            m.add(dot);
+          }
+          m.position.copy(a).add(b).multiplyScalar(0.5).multiplyScalar(0.85);
+          m.lookAt(0, m.position.y, 0);
+          m.rotateZ(rand(-0.3, 0.3));
+          fruit.add(m);
+          registerPart(m, m.position.clone().multiplyScalar(0.8));
+        }
+
+        // Wedge parts last so their explode target is the radial direction
+        wedges.forEach((w) => registerPart(w, w.userData.radial.clone().multiplyScalar(0.8)));
+        // Keep explode offsets small enough that every part stays in frame
+        parts.forEach((p) => p.userData.ex.multiplyScalar(EXPLODE));
+
+        // Center the closed fruit (crown included) on the origin, inside the root
+        scene.updateMatrixWorld(true);
+        const fitBox = new THREE.Box3().setFromObject(fruit);
+        const fitCenter = fitBox.getCenter(new THREE.Vector3());
+        fruit.position.set(-fitCenter.x, -fitCenter.y, -fitCenter.z);
+        shadow.position.y = fitBox.min.y - fitCenter.y - 0.02;
+        const fitSize = fitBox.getSize(new THREE.Vector3());
+        // silhouette sphere: covers the full height (crown to base) and the spinning width
+        const fitRadius = Math.max(fitSize.y / 2, Math.hypot(fitSize.x, fitSize.z) / 2 * 0.75);
+        let fitDist = 5.6;
+        function fitCamera() {
+          const R = fitRadius;
+          const tv = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+          const th = tv * camera.aspect;
+          // sphere spans ~60% of the height, and never more than 60% of the width
+          fitDist = Math.max(R / (0.6 * tv), R / (0.6 * th));
+          camera.near = Math.max(0.05, fitDist / 50);
+          camera.far = fitDist * 10;
+          camera.updateProjectionMatrix();
+        }
+
+        // Labels
+        const labels = [
+          { el: document.getElementById("lab-rind"), obj: wedges[3].userData.inner, local: onSphere(3 * SEG + SEG / 2, Math.PI / 2, 1) },
+          { el: document.getElementById("lab-seed"), obj: keys[0], local: new THREE.Vector3() },
+          { el: document.getElementById("lab-pith"), obj: wires[0], local: wires[0].userData.anchor },
+          { el: document.getElementById("lab-core"), obj: core, local: new THREE.Vector3(0, 0.06, 0) },
+          { el: document.getElementById("lab-crown"), obj: crown, local: new THREE.Vector3(0, 0.28, 0) },
+        ];
+
+        // State
+        const S = { open: false, explode: false, dragging: null, orbiting: false, reassembleUntil: 0, last: performance.now(), hidden: false, live: false, idleAt: 0 };
+        const poster = document.getElementById("x-poster");
+        let idleTimer = 0, openTimer = 0;
+        function goLive() {
+          clearTimeout(idleTimer);
+          if (S.live) return;
+          S.live = true;
+          S.open = false;
+          S.explode = false;
+          parts.forEach((p) => {
+            p.userData.free = false;
+            p.position.copy(p.userData.homePos);
+            p.quaternion.copy(p.userData.homeQuat);
+          });
+          fruit.rotation.y = START_ROT;
+          orbit.theta = 0.5; orbit.phi = 1.2; orbit.r = 1;
+          document.body.classList.add("x-live");
+          clearTimeout(openTimer);
+          openTimer = setTimeout(() => { if (S.live) S.open = true; }, 500);
+        }
+        function goIdle() {
+          clearTimeout(openTimer);
+          S.live = false;
+          S.idleAt = performance.now();
+          endDrag();
+          document.body.classList.remove("x-live");
+          if (window.xPosterShown) window.xPosterShown();
+        }
+        window.xGoLive = () => { poke(); goLive(); };
+        const orbit = { theta: 0.5, phi: 1.2, r: 1 }; // r is a zoom factor on the fitted distance
+        const caption = document.getElementById("x-caption");
+        let capText = "";
+        function setCaption(t) {
+          if (t === capText) return;
+          capText = t;
+          caption.style.opacity = 0;
+          setTimeout(() => { caption.textContent = t; caption.style.opacity = 1; }, 180);
+        }
+
+        function reset() {
+          S.open = false;
+          S.explode = false;
+          parts.forEach((p) => (p.userData.free = false));
+          S.reassembleUntil = performance.now() + 2500;
+        }
+
+        // Input
+        const ray = new THREE.Raycaster();
+        const ndc = new THREE.Vector2();
+        const plane = new THREE.Plane();
+        const hitPt = new THREE.Vector3();
+        const dragOffset = new THREE.Vector3();
+        let lastX = 0, lastY = 0;
+
+        function setRay(e) {
+          ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+          ray.setFromCamera(ndc, camera);
+        }
+        function poke() {
+          S.last = performance.now();
+          if (S.hidden) { document.body.classList.remove("x-hidecur"); S.hidden = false; }
+        }
+
+        canvas.addEventListener("pointerdown", (e) => {
+          poke();
+          canvas.setPointerCapture(e.pointerId);
+          canvas.classList.add("x-grabbing");
+          lastX = e.clientX; lastY = e.clientY;
+          setRay(e);
+          const hits = ray.intersectObjects(pickables, false);
+          if (hits.length) {
+            const obj = hits[0].object.userData.owner;
+            S.dragging = obj;
+            const camDir = new THREE.Vector3();
+            camera.getWorldDirection(camDir);
+            plane.setFromNormalAndCoplanarPoint(camDir.negate(), hits[0].point);
+            const local = obj.parent.worldToLocal(hits[0].point.clone());
+            dragOffset.copy(obj.position).sub(local);
+            obj.userData.free = true;
+          } else {
+            S.orbiting = true;
+          }
+        });
+        canvas.addEventListener("pointermove", (e) => {
+          poke();
+          if (S.dragging) {
+            setRay(e);
+            if (ray.ray.intersectPlane(plane, hitPt)) {
+              const obj = S.dragging;
+              obj.position.copy(obj.parent.worldToLocal(hitPt.clone())).add(dragOffset);
+            }
+          } else if (S.orbiting) {
+            orbit.theta -= (e.clientX - lastX) * 0.008;
+            orbit.phi = Math.min(2.6, Math.max(0.35, orbit.phi - (e.clientY - lastY) * 0.008));
+          }
+          lastX = e.clientX; lastY = e.clientY;
+        });
+        function endDrag() {
+          S.dragging = null;
+          S.orbiting = false;
+          canvas.classList.remove("x-grabbing");
+        }
+        canvas.addEventListener("pointerup", endDrag);
+        canvas.addEventListener("pointercancel", endDrag);
+        canvas.addEventListener("dblclick", () => { poke(); S.open = !S.open; });
+        canvas.addEventListener("wheel", (e) => {
+          poke();
+          e.preventDefault();
+          orbit.r = Math.min(1.6, Math.max(0.7, orbit.r + e.deltaY * 0.0006));
+        }, { passive: false });
+
+        window.addEventListener("keydown", (e) => {
+          poke();
+          if (e.code === "Space") {
+            e.preventDefault();
+            if (!S.live) goLive();
+            else S.open = !S.open;
+          }
+          else if (e.code === "KeyE") { if (!S.live) goLive(); S.explode = !S.explode; }
+          else if (e.code === "KeyR") {
+            if (S.live) {
+              reset();
+              clearTimeout(idleTimer);
+              idleTimer = setTimeout(goIdle, 1800);
+            }
+          }
+          else if (e.code === "KeyF") {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+            else document.exitFullscreen && document.exitFullscreen();
+          }
+        });
+
+        function resize() {
+          renderer.setSize(innerWidth, innerHeight, false);
+          camera.aspect = innerWidth / innerHeight;
+          camera.fov = camera.aspect < 0.8 ? 50 : 35;
+          fitCamera();
+        }
+        window.addEventListener("resize", resize);
+        resize();
+
+        // Loop
+        const clock = new THREE.Clock();
+        const tPos = new THREE.Vector3();
+        const tQuat = new THREE.Quaternion();
+        const v = new THREE.Vector3();
+        function frame() {
+          const dt = Math.min(clock.getDelta(), 0.05);
+          const now = performance.now();
+          const idle = now - S.last;
+          if (!S.hidden && idle > 3000) { document.body.classList.add("x-hidecur"); S.hidden = true; }
+          if (idle > 90000) {
+            S.last = now;
+            if (S.live) { reset(); goIdle(); }
+          }
+          if (!S.live && now - S.idleAt > 1000) {
+            setCaption("open me like fruit.");
+            requestAnimationFrame(frame);
+            return;
+          }
+
+          if (!S.dragging && S.live) fruit.rotation.y += dt * 0.25;
+
+          const k = 1 - Math.exp(-dt * 4);
+          parts.forEach((p) => {
+            const u = p.userData;
+            if (u.free) return;
+            tPos.copy(u.homePos);
+            if (S.explode) tPos.add(u.ex);
+            tQuat.copy(u.wedge && S.open ? u.openQuat : u.homeQuat);
+            p.position.lerp(tPos, k);
+            p.quaternion.slerp(tQuat, k);
+          });
+
+          camera.position.set(
+            fitDist * orbit.r * Math.sin(orbit.phi) * Math.sin(orbit.theta),
+            fitDist * orbit.r * Math.cos(orbit.phi),
+            fitDist * orbit.r * Math.sin(orbit.phi) * Math.cos(orbit.theta)
+          );
+          camera.lookAt(0, 0, 0);
+          camera.updateMatrixWorld();
+          scene.updateMatrixWorld();
+
+          labels.forEach((l) => {
+            l.el.classList.toggle("is-on", S.explode);
+            if (!S.explode) return;
+            v.copy(l.local);
+            l.obj.localToWorld(v).project(camera);
+            const x = (v.x * 0.5 + 0.5) * innerWidth, y = (-v.y * 0.5 + 0.5) * innerHeight;
+            l.el.style.transform = `translate(${x + 8}px, ${y - 8}px)`;
+          });
+
+          if (!S.live) setCaption("open me like fruit.");
+          else if (S.dragging) setCaption("touch, don't click.");
+          else if (now < S.reassembleUntil) setCaption("close me gently.");
+          else if (S.open || S.explode) setCaption("every seed is a file.");
+          else setCaption("open me like fruit.");
+
+          renderer.render(scene, camera);
+          requestAnimationFrame(frame);
+        }
+        setCaption("open me like fruit.");
+        frame();
+      })();
+    </script>
+  </body>
+</html>
